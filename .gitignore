@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+sample_output/
+test_folder_output/
+_research_output.json
+_research_pipeline.json
+_research_business.json
+_deck_input.json

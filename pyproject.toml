@@ -1,0 +1,12 @@
+[project]
+name = "skills-building"
+version = "0.1.0"
+description = "Claude Code skills for JnJ-branded document generation (decks, markdown, HTML) with web research"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "openai>=2.21.0",
+    "python-dotenv>=1.2.1",
+    "python-pptx>=1.0.2",
+    "tavily-python>=0.7.21",
+]
