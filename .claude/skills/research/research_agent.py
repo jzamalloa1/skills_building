@@ -88,7 +88,11 @@ You MUST return a valid JSON object following this exact schema:
 # ═══════════════════════════════════════════════════════════
 
 def load_env():
-    """Load environment variables from .env file."""
+    """Load environment variables from .env file.
+
+    Raises:
+        EnvironmentError: If required API keys are missing.
+    """
     load_dotenv(find_dotenv(usecwd=True))
 
     missing = []
@@ -98,9 +102,10 @@ def load_env():
         missing.append("OPENAI_API_KEY")
 
     if missing:
-        print(f"Error: Missing environment variables: {', '.join(missing)}", file=sys.stderr)
-        print("Please set them in your .env file. See .env.example for reference.", file=sys.stderr)
-        sys.exit(1)
+        raise EnvironmentError(
+            f"Missing environment variables: {', '.join(missing)}. "
+            "Please set them in your .env file. See .env.example for reference."
+        )
 
 
 def truncate_content(text, max_chars=MAX_CONTENT_CHARS):
@@ -111,7 +116,18 @@ def truncate_content(text, max_chars=MAX_CONTENT_CHARS):
 
 
 def tavily_search(topic, max_results=8):
-    """Search the web using Tavily API with full content extraction."""
+    """Search the web using Tavily API with full content extraction.
+
+    Args:
+        topic: Search query string.
+        max_results: Maximum number of results to fetch.
+
+    Returns:
+        dict: Tavily search response with 'results' list.
+
+    Raises:
+        RuntimeError: If the Tavily search fails.
+    """
     client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
 
     print(f"Searching for: {topic}", file=sys.stderr)
@@ -125,8 +141,7 @@ def tavily_search(topic, max_results=8):
             max_results=max_results,
         )
     except Exception as e:
-        print(f"Error: Tavily search failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"Tavily search failed: {e}") from e
 
     results = response.get("results", [])
     print(f"Found {len(results)} sources.", file=sys.stderr)
@@ -152,13 +167,25 @@ def format_sources_for_llm(search_results):
 
 
 def structure_research(topic, search_results, model="gpt-4o"):
-    """Use OpenAI to structure raw search results into the universal JSON schema."""
+    """Use OpenAI to structure raw search results into the universal JSON schema.
+
+    Args:
+        topic: The research topic string.
+        search_results: Tavily search response dict.
+        model: OpenAI model name.
+
+    Returns:
+        dict: Structured research JSON with 'meta' and 'sections'.
+
+    Raises:
+        ValueError: If no search results or LLM returns empty sections.
+        RuntimeError: If OpenAI API call or JSON parsing fails.
+    """
     client = OpenAI()
     sources = format_sources_for_llm(search_results)
 
     if not sources:
-        print("Error: No search results to structure.", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("No search results to structure.")
 
     user_prompt = f"""Research Topic: {topic}
 Today's Date: {date.today().isoformat()}
@@ -190,17 +217,16 @@ Return ONLY the JSON object. No other text."""
             temperature=0.3,
         )
     except Exception as e:
-        print(f"Error: OpenAI API call failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"OpenAI API call failed: {e}") from e
 
     content = response.choices[0].message.content
 
     try:
         result = json.loads(content)
     except json.JSONDecodeError as e:
-        print(f"Error: Failed to parse LLM response as JSON: {e}", file=sys.stderr)
-        print(f"Raw response:\n{content[:500]}...", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(
+            f"Failed to parse LLM response as JSON: {e}\nRaw response:\n{content[:500]}..."
+        ) from e
 
     # Basic validation
     if "meta" not in result:
@@ -212,14 +238,62 @@ Return ONLY the JSON object. No other text."""
         }
 
     if "sections" not in result or not result["sections"]:
-        print("Error: LLM returned no sections.", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("LLM returned no sections.")
 
     return result
 
 
 # ═══════════════════════════════════════════════════════════
-# MAIN
+# PUBLIC API
+# ═══════════════════════════════════════════════════════════
+
+def research(topic: str, max_results: int = 8, model: str = "gpt-4o",
+             output_path: str | None = None) -> dict:
+    """Run the full research pipeline: search → structure → return JSON.
+
+    This is the primary entry point for importing this module as a library.
+
+    Args:
+        topic: The research topic string.
+        max_results: Number of Tavily search results to fetch.
+        model: OpenAI model to use for structuring.
+        output_path: Optional file path to write the JSON output.
+                     If None, the result is only returned (not written to disk).
+
+    Returns:
+        dict: Structured research JSON with 'meta' and 'sections' keys.
+
+    Raises:
+        EnvironmentError: If required API keys are missing.
+        RuntimeError: If search or structuring fails.
+        ValueError: If no results or empty sections.
+    """
+    load_env()
+    search_results = tavily_search(topic, max_results=max_results)
+    structured = structure_research(topic, search_results, model=model)
+
+    if output_path:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output_path, "w") as f:
+            json.dump(structured, f, indent=2, ensure_ascii=False)
+
+        section_count = len(structured.get("sections", []))
+        urls = set()
+        for section in structured.get("sections", []):
+            for fn in section.get("footnotes", []):
+                urls.add(fn.get("url", ""))
+        print(f"\nResearch saved to: {output_path}", file=sys.stderr)
+        print(f"Sections: {section_count}", file=sys.stderr)
+        print(f"Unique sources cited: {len(urls)}", file=sys.stderr)
+        print(f"Title: {structured.get('meta', {}).get('title', 'N/A')}", file=sys.stderr)
+
+    return structured
+
+
+# ═══════════════════════════════════════════════════════════
+# CLI
 # ═══════════════════════════════════════════════════════════
 
 def main():
@@ -260,34 +334,7 @@ def main():
     if not topic:
         parser.error("Topic is required. Provide as positional argument or with --topic/-t flag.")
 
-    # Load API keys
-    load_env()
-
-    # Step 1: Search the web
-    search_results = tavily_search(topic, max_results=args.max_results)
-
-    # Step 2: Structure into JSON schema
-    structured = structure_research(topic, search_results, model=args.model)
-
-    # Step 3: Write output
-    output_dir = os.path.dirname(args.output)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    with open(args.output, "w") as f:
-        json.dump(structured, f, indent=2, ensure_ascii=False)
-
-    # Summary
-    section_count = len(structured.get("sections", []))
-    urls = set()
-    for section in structured.get("sections", []):
-        for fn in section.get("footnotes", []):
-            urls.add(fn.get("url", ""))
-
-    print(f"\nResearch saved to: {args.output}", file=sys.stderr)
-    print(f"Sections: {section_count}", file=sys.stderr)
-    print(f"Unique sources cited: {len(urls)}", file=sys.stderr)
-    print(f"Title: {structured.get('meta', {}).get('title', 'N/A')}", file=sys.stderr)
+    research(topic, max_results=args.max_results, model=args.model, output_path=args.output)
 
 
 if __name__ == "__main__":

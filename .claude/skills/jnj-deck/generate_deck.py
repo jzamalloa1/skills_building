@@ -384,6 +384,67 @@ BUILDERS = {
 }
 
 
+# ═══════════════════════════════════════════════════════════
+# PUBLIC API
+# ═══════════════════════════════════════════════════════════
+
+def generate_deck(deck_data: dict, output_path: str | None = None) -> dict:
+    """Build a JnJ-branded PowerPoint deck from a slide JSON dict.
+
+    This is the primary entry point for importing this module as a library.
+
+    Args:
+        deck_data: Dict with 'slides' key containing a list of slide defs.
+        output_path: Optional path to write the .pptx file.
+                     If None, the presentation bytes are only returned (not written).
+
+    Returns:
+        dict with keys:
+            'pptx_bytes': bytes — the raw .pptx file content
+            'pptx_path': str | None — path written (if output_path given)
+            'slide_count': int
+    """
+    import io
+
+    prs = Presentation()
+    prs.slide_width = SLIDE_WIDTH
+    prs.slide_height = SLIDE_HEIGHT
+
+    slide_num = 0
+    for slide_def in deck_data["slides"]:
+        slide_type = slide_def.get("type", "bullets")
+        builder = BUILDERS.get(slide_type)
+        if not builder:
+            print(f"Warning: Unknown slide type '{slide_type}', skipping.", file=sys.stderr)
+            continue
+        slide_num += 1
+        builder(prs, slide_def, slide_num)
+
+    # Capture bytes
+    buffer = io.BytesIO()
+    prs.save(buffer)
+    pptx_bytes = buffer.getvalue()
+
+    pptx_path = None
+    if output_path:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output_path, "wb") as f:
+            f.write(pptx_bytes)
+        pptx_path = output_path
+
+    return {
+        "pptx_bytes": pptx_bytes,
+        "pptx_path": pptx_path,
+        "slide_count": slide_num,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# CLI
+# ═══════════════════════════════════════════════════════════
+
 def main():
     parser = argparse.ArgumentParser(description="Generate a JnJ-branded PowerPoint deck from JSON")
     parser.add_argument("--input", "-i", help="Path to JSON file (default: read from stdin)")
@@ -400,29 +461,9 @@ def main():
     # Determine output path
     output_path = args.output or deck_data.get("output", "deck.pptx")
 
-    # Build presentation
-    prs = Presentation()
-    prs.slide_width = SLIDE_WIDTH
-    prs.slide_height = SLIDE_HEIGHT
-
-    slide_num = 0
-    for slide_def in deck_data["slides"]:
-        slide_type = slide_def.get("type", "bullets")
-        builder = BUILDERS.get(slide_type)
-        if not builder:
-            print(f"Warning: Unknown slide type '{slide_type}', skipping.", file=sys.stderr)
-            continue
-        slide_num += 1
-        builder(prs, slide_def, slide_num)
-
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-
-    prs.save(output_path)
-    print(f"Deck saved to: {output_path}")
-    print(f"Total slides: {slide_num}")
+    result = generate_deck(deck_data, output_path=output_path)
+    print(f"Deck saved to: {result['pptx_path']}")
+    print(f"Total slides: {result['slide_count']}")
 
 
 if __name__ == "__main__":

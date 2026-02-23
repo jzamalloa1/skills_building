@@ -802,22 +802,21 @@ def generate_html(data: dict) -> str:
 
 
 # ═══════════════════════════════════════════════════════════
-# MAIN
+# PUBLIC API
 # ═══════════════════════════════════════════════════════════
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate JnJ-branded Markdown + HTML documents from JSON")
-    parser.add_argument("--input", "-i", required=True, help="Path to research JSON file")
-    parser.add_argument("--output", "-o", required=True, help="Output .md filename (.html auto-generated alongside)")
-    args = parser.parse_args()
+def generate_markdown(data: dict) -> str:
+    """Generate JnJ-branded Markdown from a research JSON dict.
 
-    with open(args.input, "r") as f:
-        data = json.load(f)
+    Args:
+        data: Research JSON dict with 'meta' and 'sections' keys.
 
+    Returns:
+        str: The generated Markdown string.
+    """
     meta = data.get("meta", {})
     sections = data.get("sections", [])
 
-    # ── Generate Markdown ──
     all_refs = []
     doc_parts = []
     doc_parts.append(render_header(meta))
@@ -831,28 +830,86 @@ def main():
     doc_parts.append(render_references(all_refs))
     doc_parts.append(render_footer())
 
-    md_output = '\n'.join(doc_parts)
+    return '\n'.join(doc_parts)
 
-    # Ensure output directory exists
-    output_dir = os.path.dirname(args.output)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
 
-    with open(args.output, "w") as f:
-        f.write(md_output)
+def render(data: dict, output_path: str | None = None) -> dict:
+    """Render both Markdown and HTML from a research JSON dict.
 
-    section_count = len(sections)
-    ref_count = len(all_refs)
-    print(f"Markdown saved to: {args.output}")
-    print(f"Sections: {section_count}")
-    print(f"Unique sources cited: {ref_count}")
+    This is the primary entry point for importing this module as a library.
 
-    # ── Generate HTML ──
-    html_path = os.path.splitext(args.output)[0] + ".html"
+    Args:
+        data: Research JSON dict with 'meta' and 'sections' keys.
+        output_path: Optional path for .md file. HTML is auto-generated
+                     alongside with .html extension. If None, files are
+                     not written to disk — strings are only returned.
+
+    Returns:
+        dict with keys:
+            'markdown': str — the Markdown content
+            'html': str — the standalone HTML content
+            'md_path': str | None — path written (if output_path given)
+            'html_path': str | None — path written (if output_path given)
+            'section_count': int
+            'ref_count': int
+    """
+    md_output = generate_markdown(data)
     html_output = generate_html(data)
-    with open(html_path, "w") as f:
-        f.write(html_output)
-    print(f"HTML saved to:     {html_path}")
+    sections = data.get("sections", [])
+
+    md_path = None
+    html_path = None
+
+    if output_path:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
+        with open(output_path, "w") as f:
+            f.write(md_output)
+        md_path = output_path
+
+        html_path = os.path.splitext(output_path)[0] + ".html"
+        with open(html_path, "w") as f:
+            f.write(html_output)
+
+    # Count refs by re-generating (lightweight — just counting)
+    all_refs = []
+    for section in sections:
+        for fn in section.get("footnotes", []):
+            ref_entry = {"label": fn.get("label", fn.get("url", "")), "url": fn.get("url", "")}
+            if ref_entry not in all_refs:
+                all_refs.append(ref_entry)
+
+    return {
+        "markdown": md_output,
+        "html": html_output,
+        "md_path": md_path,
+        "html_path": html_path,
+        "section_count": len(sections),
+        "ref_count": len(all_refs),
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# CLI
+# ═══════════════════════════════════════════════════════════
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate JnJ-branded Markdown + HTML documents from JSON")
+    parser.add_argument("--input", "-i", required=True, help="Path to research JSON file")
+    parser.add_argument("--output", "-o", required=True, help="Output .md filename (.html auto-generated alongside)")
+    args = parser.parse_args()
+
+    with open(args.input, "r") as f:
+        data = json.load(f)
+
+    result = render(data, output_path=args.output)
+
+    print(f"Markdown saved to: {result['md_path']}")
+    print(f"Sections: {result['section_count']}")
+    print(f"Unique sources cited: {result['ref_count']}")
+    print(f"HTML saved to:     {result['html_path']}")
 
 
 if __name__ == "__main__":
