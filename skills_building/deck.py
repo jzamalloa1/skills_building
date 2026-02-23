@@ -6,17 +6,9 @@ Usage:
     # result['pptx_bytes'], result['pptx_path'], result['slide_count']
 """
 
-import sys
-import os
-
-# Add the skill directory to path so the original module is importable
-_skill_dir = os.path.join(os.path.dirname(__file__), "..", ".claude", "skills", "jnj-deck")
-_skill_dir = os.path.abspath(_skill_dir)
-if _skill_dir not in sys.path:
-    sys.path.insert(0, _skill_dir)
-
-from generate_deck import (  # noqa: E402
+from skills_building._generate_deck import (
     generate_deck,
+    main,
     # Slide builders
     build_title_slide,
     build_bullets_slide,
@@ -61,5 +53,4 @@ __all__ = [
 
 def _cli():
     """CLI entry point for `skills-deck` command."""
-    from generate_deck import main  # noqa: E402
     main()

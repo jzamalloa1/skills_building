@@ -6,19 +6,11 @@ Usage:
     # result['markdown'], result['html'], result['md_path'], result['html_path']
 """
 
-import sys
-import os
-
-# Add the skill directory to path so the original module is importable
-_skill_dir = os.path.join(os.path.dirname(__file__), "..", ".claude", "skills", "jnj-markdown")
-_skill_dir = os.path.abspath(_skill_dir)
-if _skill_dir not in sys.path:
-    sys.path.insert(0, _skill_dir)
-
-from generate_markdown import (  # noqa: E402
+from skills_building._generate_markdown import (
     render,
     generate_markdown,
     generate_html,
+    main,
     # Individual renderers (Markdown)
     render_header,
     render_heading,
@@ -93,5 +85,4 @@ __all__ = [
 
 def _cli():
     """CLI entry point for `skills-markdown` command."""
-    from generate_markdown import main  # noqa: E402
     main()
