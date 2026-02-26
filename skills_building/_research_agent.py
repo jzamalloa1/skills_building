@@ -22,7 +22,7 @@ from openai import OpenAI
 
 
 # Maximum characters of raw_content to include per source
-MAX_CONTENT_CHARS = 3500
+MAX_CONTENT_CHARS = 6000
 
 
 # ═══════════════════════════════════════════════════════════
@@ -75,7 +75,7 @@ You MUST return a valid JSON object following this exact schema:
 6. Mix section types for variety — don't use all bullets.
 7. Use "metrics" to highlight 2-4 key figures prominently.
 8. Use rich narrative in "text" sections — be descriptive and analytical.
-9. Aim for 15-30 sections total with a logical flow: overview → deep-dive → outlook.
+9. Aim for 20-35 sections total with a logical flow: overview → deep-dive → competitive analysis → pipeline → outlook.
 10. The "meta.date" should be today's date.
 11. For mermaid charts: use pie, xychart-beta (bar charts), quadrantChart, or timeline syntax.
 12. Distinguish facts (with citations) from strategic analysis (no citation needed).
@@ -197,10 +197,11 @@ I found {len(sources)} sources. Here they are:
 Based on these sources, produce a comprehensive research document as a JSON object.
 The document should have:
 - A clear title and subtitle in "meta"
-- 15-30 sections covering: executive summary, market landscape, key metrics, deep-dive analysis, competitive positioning, outlook
-- At least 1 table, 1 mermaid diagram, and 1 timeline
+- 20-35 sections covering: executive summary, market landscape, key metrics, deep-dive analysis, competitive positioning, pipeline/future outlook, and strategic implications
+- At least 2 tables, 2 mermaid diagrams (pie charts, bar charts, or timelines), and 1 timeline
 - Every factual claim cited with footnotes using ONLY the URLs from the sources above
-- Rich narrative in text sections — this is a report, not slides
+- Rich, detailed narrative in text sections — this is an executive report, not slides. Each text section body should be 3-5 sentences minimum.
+- Use metrics sections to highlight quantitative data prominently
 
 Return ONLY the JSON object. No other text."""
 
